@@ -1,0 +1,127 @@
+---
+title: "R project"
+author: "Ishan"
+date: "2026-10-06"
+output: html_document
+---
+```{r}
+install.packages("atrrr")
+install.packages("dplyr")
+
+library(atrrr)
+library(dplyr)
+```
+
+
+```{r}
+ev_test <- search_post(
+  q = "electric vehicles",
+  limit = 100,
+  lang = "en"
+)
+
+View(ev_test)
+```
+
+```{r}
+electric_vehicles <- search_post(
+  q = "electric vehicles",
+  limit = 1000,
+  lang = "en"
+)
+
+electric_cars <- search_post(
+  q = "electric cars",
+  limit = 1000,
+  lang = "en"
+)
+
+tesla <- search_post(
+  q = "Tesla",
+  limit = 1000,
+  lang = "en"
+)
+
+ev_charging <- search_post(
+  q = "EV charging",
+  limit = 1000,
+  lang = "en"
+)
+```
+
+```{r}
+electric_vehicles$search_topic <- "Electric Vehicles"
+electric_cars$search_topic <- "Electric Cars"
+tesla$search_topic <- "Tesla"
+ev_charging$search_topic <- "EV Charging"
+```
+
+```{r}
+ev_data <- bind_rows(
+  electric_vehicles,
+  electric_cars,
+  tesla,
+  ev_charging
+)
+```
+
+```{r}
+ev_data <- ev_data %>%
+  distinct(uri, .keep_all = TRUE)
+```
+
+```{r}
+nrow(ev_data)
+```
+
+```{r}
+glimpse(ev_data)
+```
+
+```{r}
+View(ev_data)
+```
+
+```{r}
+write.csv(
+  ev_data,
+  "bluesky_electric_vehicle_data.csv",
+  row.names = FALSE
+)
+```
+```{r}
+names(ev_data)[sapply(ev_data, is.list)]
+```
+
+
+```{r}
+ev_data_csv <- ev_data %>%
+  select(where(~ !is.list(.)))
+```
+```{r}
+dim(ev_data_csv)
+names(ev_data_csv)
+View(ev_data_csv)
+```
+
+```{r}
+write.csv(
+  ev_data_csv,
+  "bluesky_electric_vehicle_data.csv",
+  row.names = FALSE
+)
+```
+
+```{r}
+saveRDS(
+  ev_data,
+  "bluesky_electric_vehicle_full.rds"
+)
+```
+```{r}
+write.csv(
+  ev_data_csv,
+  "~/Downloads/bluesky_electric_vehicle_data.csv",
+  row.names = FALSE
+)
+```
