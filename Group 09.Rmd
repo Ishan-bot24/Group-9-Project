@@ -1,127 +1,124 @@
 ---
-title: "R project"
-author: "Ishan"
+title: "EV  Discussions on Bluesky"
+author: "COMP3020 — Group 9"
 date: "2026-10-06"
 output: html_document
 ---
-```{r}
-install.packages("atrrr")
-install.packages("dplyr")
 
+# Introduction
+Electric vehicles (EVs) spark online debate on charging infrastructure, vehicle options, cost, tech and environment. In this research, we explore Bluesky posts about EVs to uncover key themes, connections between discussion categories and engagement scores, clusters of similar posts, and the nature of the interactions in replies. The analyses are not mutually exclusive, but rather integrated a content analysis and a network analysis.
+
+**Research questions:**
+1.What are the most frequently used words or themes in Bluesky posts related to the use of EVs?
+3. For a post with a search category, is the log of the number of likes above-median or below-median?
+3. Are the posts around the EV topic been clustered/clustered into meaningful text-based clusters?
+4) What accounts are in the middle of the observed EV reply network?
+
+# Data Collection and Preparation
+
+## Collection approach
+
+```{r collection-code, eval=FALSE}
 library(atrrr)
 library(dplyr)
+electric_vehicles = search_post(q="electric vehicles", limit=1000, lang="en")
+electric_cars = search_post(q="electric cars", limit=1000, lang="en")
+tesla = search_post(q="Tesla", limit=1000, lang="en")
+ev_charging = search_post(q="EV charging", limit=1000, lang="en")
+electric_vehicles$search_topic = "Electric Vehicles"
+electric_cars$search_topic = "Electric Cars"
+tesla$search_topic = "Tesla"
+ev_charging$search_topic = "EV Charging"
+EV_full = dplyr::bind_rows(electric_vehicles, electric_cars, tesla, ev_charging)
+EV_full = dplyr::distinct(EV_full, uri, .keep_all=TRUE)
+saveRDS(EV_full, "bluesky_electric_vehicle_full.rds")
+EV_csv = dplyr::select(EV_full, where(~!is.list(.)))
+write.csv(EV_csv, "bluesky_electric_vehicle_data.csv", row.names=FALSE)
 ```
 
-
+## Import and inspect
 ```{r}
-ev_test <- search_post(
-  q = "electric vehicles",
-  limit = 100,
-  lang = "en"
-)
+install.packages("igraph")
+``` 
 
-View(ev_test)
-```
-
-```{r}
-electric_vehicles <- search_post(
-  q = "electric vehicles",
-  limit = 1000,
-  lang = "en"
-)
-
-electric_cars <- search_post(
-  q = "electric cars",
-  limit = 1000,
-  lang = "en"
-)
-
-tesla <- search_post(
-  q = "Tesla",
-  limit = 1000,
-  lang = "en"
-)
-
-ev_charging <- search_post(
-  q = "EV charging",
-  limit = 1000,
-  lang = "en"
-)
+```{r packages}
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(igraph)
 ```
 
 ```{r}
-electric_vehicles$search_topic <- "Electric Vehicles"
-electric_cars$search_topic <- "Electric Cars"
-tesla$search_topic <- "Tesla"
-ev_charging$search_topic <- "EV Charging"
+EV = read.csv("bluesky_electric_vehicle_data.csv", as.is=TRUE)
+stopifnot(all(c("uri", "text", "author_handle", "like_count", "search_topic", "in_reply_to") %in% names(EV)))
+cat("Rows:", nrow(EV), "Columns:", ncol(EV), "\n")
+print(names(EV))
+print(table(EV$search_topic, useNA="ifany"))
+cat("Unique post URIs:", length(unique(EV$uri)), "\n")
+cat("Unique author handles:", length(unique(EV$author_handle)), "\n")
+print(colSums(is.na(EV)))
+```
+
+## Engagement and Data Cleaning summary
+
+```{r}
+EV = EV[!duplicated(EV$uri), ]
+EV = EV[!is.na(EV$text) & nzchar(trimws(EV$text)), ]
+EV$like_count = as.numeric(EV$like_count)
+EV$reply_count = as.numeric(EV$reply_count)
+EV$repost_count = as.numeric(EV$repost_count)
+EV$quote_count = as.numeric(EV$quote_count)
+EV = EV[!is.na(EV$search_topic) & !is.na(EV$like_count), ]
+EV$engagement = rowSums(cbind(EV$like_count, EV$reply_count, EV$repost_count, EV$quote_count), na.rm=TRUE)
+cat("Usable posts:", nrow(EV), "\n")
+print(summary(EV[, c("like_count", "reply_count", "repost_count", "engagement")]))
+print(table(EV$search_topic))
+```
+# Text/Content Analysis and Visualisation
+
+## Research question 1
+
+1.What are the most frequently used words or themes in Bluesky posts related to the use of EVs?
+
+## Preprocessing and document-term matrix
+
+```{r text-preprocessing}
+EV_text = EV$text
+EV_text = gsub("https?://[^[:space:]]+|www\\.[^[:space:]]+", " ", EV_text, perl=TRUE)
+EV.corpus = Corpus(VectorSource(EV_text))
+EV.corpus = tm_map(EV.corpus, content_transformer(function(x) iconv(x, to="ASCII", sub=" ")))
+EV.corpus = tm_map(EV.corpus, removeNumbers)
+EV.corpus = tm_map(EV.corpus, removePunctuation)
+EV.corpus = tm_map(EV.corpus, stripWhitespace)
+EV.corpus = tm_map(EV.corpus, content_transformer(tolower))
+EV.corpus = tm_map(EV.corpus, removeWords, stopwords("english"))
+# Common query words removed to expose more specific themes; document this choice.
+EV.corpus = tm_map(EV.corpus, removeWords, c("electric", "vehicle", "vehicles", "cars", "car", "tesla", "ev", "bsky", "bluesky"))
+EV.corpus = tm_map(EV.corpus, stemDocument)
+EV.dtm = DocumentTermMatrix(EV.corpus)
+cat("Document-term matrix:", dim(EV.dtm), "\n")
+```
+## Frequent words
+
+```{r word-frequency}
+frequencies = colSums(as.matrix(EV.dtm))
+frequencies = sort(frequencies, decreasing=TRUE)
+print(head(frequencies, 20))
 ```
 
 ```{r}
-ev_data <- bind_rows(
-  electric_vehicles,
-  electric_cars,
-  tesla,
-  ev_charging
-)
+top = head(frequencies, 20)
+par(mar=c(9,4,3,1))
+barplot(top, las=2, cex.names=0.8, main="Most frequent EV discussion words", ylab="Frequency")
 ```
 
 ```{r}
-ev_data <- ev_data %>%
-  distinct(uri, .keep_all = TRUE)
-```
-
-```{r}
-nrow(ev_data)
-```
-
-```{r}
-glimpse(ev_data)
-```
-
-```{r}
-View(ev_data)
-```
-
-```{r}
-write.csv(
-  ev_data,
-  "bluesky_electric_vehicle_data.csv",
-  row.names = FALSE
-)
-```
-```{r}
-names(ev_data)[sapply(ev_data, is.list)]
+wordcloud(names(frequencies), frequencies, min.freq=5, max.words=120,
+          random.order=FALSE, colors=brewer.pal(8, "Dark2"), scale=c(2.7,0.6))
 ```
 
 
-```{r}
-ev_data_csv <- ev_data %>%
-  select(where(~ !is.list(.)))
-```
-```{r}
-dim(ev_data_csv)
-names(ev_data_csv)
-View(ev_data_csv)
-```
 
-```{r}
-write.csv(
-  ev_data_csv,
-  "bluesky_electric_vehicle_data.csv",
-  row.names = FALSE
-)
-```
 
-```{r}
-saveRDS(
-  ev_data,
-  "bluesky_electric_vehicle_full.rds"
-)
-```
-```{r}
-write.csv(
-  ev_data_csv,
-  "~/Downloads/bluesky_electric_vehicle_data.csv",
-  row.names = FALSE
-)
-```
+
